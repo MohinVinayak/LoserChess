@@ -100,6 +100,26 @@ def evaluate_board():
         value = piece_value[piece.piece_type]
         score += value if piece.color else -value
     return score
+def draw_board():
+    for row in range(8):
+        for col in range(8):
+            color = COLORS['white'] if (row+col)%2==0 else COLORS['black']
+            rect = pygame.Rect(col*SQUARE_SIZE, row*SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
+            pygame.draw.rect(screen, color, rect)
+
+            # Highlight selected piece's square
+            if selected_square is not None:
+                sel_row, sel_col = divmod(selected_square, 8)
+                if row == 7 - sel_row and col == sel_col:
+                    pygame.draw.rect(screen, SELECTED_COLOR, rect, 6)
+
+            # Highlight possible moves
+            if selected_square is not None:
+                possible_moves = [move.to_square for move in board.legal_moves if move.from_square == selected_square]
+                if chess.square(col, 7 - row) in possible_moves:
+                    pygame.draw.circle(screen, (0 , 0, 0), 
+                                       (col * SQUARE_SIZE + SQUARE_SIZE // 2, 
+                                        row * SQUARE_SIZE + SQUARE_SIZE // 2), 10)
 
 def display_game_over():
     overlay_surface = pygame.Surface((WIDTH, HEIGHT), pygame.SRCALPHA)
