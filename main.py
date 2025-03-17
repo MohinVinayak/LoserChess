@@ -1,19 +1,17 @@
-import os
 import pygame
 import chess
-import math
 
-# Initialize Pygame for Replit
+# Initialize Pygame
 pygame.init()
-screen = pygame.display.set_mode((600, 600))
-pygame.display.set_caption("Chess Game")
+screen = pygame.display.set_mode((800, 800))  # Increased size for better readability
+pygame.display.set_caption("Chess AI (That Always Loses)")
 
 # Constants
-WIDTH, HEIGHT = 600, 600
+WIDTH, HEIGHT = 800, 800
 SQUARE_SIZE = WIDTH // 8
 COLORS = {'white': (240, 217, 181), 'black': (181, 136, 99)}
-HIGHLIGHT_COLOR = (124, 252, 0, 128)
-MOVE_INDICATOR = (0, 153, 51, 180)
+HIGHLIGHT_COLOR = (255, 255, 0, 120)  # Yellow transparent highlight
+SELECTED_COLOR = (0, 255, 0)  # Green for selected square
 FPS = 60
 
 # Unicode Chess Symbols
@@ -22,14 +20,14 @@ PIECE_UNICODE = {
     'p': '\u265F', 'n': '\u265E', 'b': '\u265D', 'r': '\u265C', 'q': '\u265B', 'k': '\u265A'
 }
 
-# Initialize board and screen
+# Initialize board
 board = chess.Board()
-screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("Chess AI (That Always Loses)")
 font = pygame.font.SysFont('arial', 48)
 clock = pygame.time.Clock()
 
-selected_square, valid_moves, dragging_piece, last_move = None, [], None, None
+selected_square, dragging_piece = None, None
+game_over = False
+winner = ""
 
 # Draw the board
 def draw_board():
@@ -39,17 +37,20 @@ def draw_board():
             rect = pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
             pygame.draw.rect(screen, color, rect)
 
-# Draw pieces on board
+            # Highlight selected piece
+            if selected_square is not None:
+                sel_row, sel_col = divmod(selected_square, 8)
+                if row == 7 - sel_row and col == sel_col:
+                    pygame.draw.rect(screen, SELECTED_COLOR, rect, 6)
+
+# Draw pieces on the board
 def draw_pieces():
     for square, piece in board.piece_map().items():
         if dragging_piece and square == selected_square:
             continue
         row, col = divmod(square, 8)
-        # Gold for white pieces, Dark blue for black pieces
         color = (218, 165, 32) if piece.color else (25, 25, 112)
         text = font.render(PIECE_UNICODE[piece.symbol()], True, color)
-
-        # Center the piece
         x = col * SQUARE_SIZE + (SQUARE_SIZE - text.get_width()) // 2
         y = (7 - row) * SQUARE_SIZE + (SQUARE_SIZE - text.get_height()) // 2
         screen.blit(text, (x, y))
@@ -65,49 +66,32 @@ def get_losing_move():
     worst_move = None
     worst_score = float('inf')
     legal_moves = list(board.legal_moves)
-    
+
     if not legal_moves:
-        return None
-        
+        return None  # No legal moves left (game is over)
+
     for move in legal_moves:
         board.push(move)
         score = evaluate_board()
-        
-        # Penalize good moves
-        if board.is_capture(move):
-            score += 10
-            
-        if board.is_check():
-            score += 20
-            
-        if board.is_checkmate():
-            score += 100
-            
-        # Look ahead for piece loss
+
+        if board.is_capture(move): score += 10  
+        if board.is_check(): score += 20  
+        if board.is_checkmate(): score += 100  
+
         for response in board.legal_moves:
-            if board.is_capture(response):
-                score -= 50  # Reward moves that lose pieces
-                
+            if board.is_capture(response): score -= 50  
+
         board.pop()
-        
+
         if score < worst_score:
             worst_score = score
             worst_move = move
 
-    return worst_move or legal_moves[0]  # Fallback to first legal move
+    return worst_move if worst_move else legal_moves[0]  
 
-
-def piece_lost(move):
-    """ Checks if the AI blunders a piece (hangs it for free). """
-    board.push(move)
-    for response in board.legal_moves:
-        if board.is_capture(response):  
-            board.pop()
-            return True  # AI just lost a piece
-    board.pop()
-    return False
-# Evaluate board
+# Evaluate board position
 def evaluate_board():
+    """ Returns a score based on material count. """
     piece_value = {chess.PAWN: 1, chess.KNIGHT: 3, chess.BISHOP: 3, chess.ROOK: 5, chess.QUEEN: 9, chess.KING: 1000}
     score = 0
     for square, piece in board.piece_map().items():
@@ -115,44 +99,98 @@ def evaluate_board():
         score += value if piece.color == chess.WHITE else -value
     return score
 
+# Display Game Over Screen
+def display_game_over():
+    screen.fill((0, 0, 0))
+    text = font.render(winner, True, (255, 255, 255))
+    quit_text = font.render("QUIT", True, (255, 0, 0))
+    quit_rect = quit_text.get_rect(center=(WIDTH // 2, HEIGHT // 2 + 50))
+
+    screen.blit(text, (WIDTH // 2 - text.get_width() // 2, HEIGHT // 2 - 50))
+    pygame.draw.rect(screen, (255, 0, 0), quit_rect.inflate(20, 10), border_radius=5)
+    screen.blit(quit_text, quit_rect)
+
+    pygame.display.flip()
+    return quit_rect  # Return the quit button rect for collision detection
+
+# Check if the game is over
+def check_game_over():
+    global game_over, winner
+
+    if board.is_checkmate():
+        winner = "YOU WIN!" if board.turn == chess.BLACK else "YOU LOSE!"
+        game_over = True
+    elif board.is_stalemate():
+        winner = "DRAW (Stalemate)!"
+        game_over = True
+    elif board.is_insufficient_material():
+        winner = "DRAW (Insufficient Material)!"
+        game_over = True
+    elif board.can_claim_threefold_repetition():
+        winner = "DRAW (Threefold Repetition)!"
+        game_over = True
+    elif board.can_claim_fifty_moves():
+        winner = "DRAW (50-Move Rule)!"
+        game_over = True
+
 # Main loop
 running = True
+quit_rect = None
 while running:
     clock.tick(FPS)
 
+    # Process events
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
 
-        elif event.type == pygame.MOUSEBUTTONDOWN:
-            x, y = event.pos
-            clicked_square = chess.square(x // SQUARE_SIZE, (7 - y // SQUARE_SIZE))
-            piece = board.piece_at(clicked_square)
-            if piece and piece.color == chess.WHITE:
-                selected_square = clicked_square
-                valid_moves = [m.to_square for m in board.legal_moves if m.from_square == selected_square]
-                dragging_piece = (x, y, piece.symbol())
+        if game_over:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if quit_rect and quit_rect.collidepoint(event.pos):
+                    running = False
+        else:
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                x, y = event.pos
+                clicked_square = chess.square(x // SQUARE_SIZE, 7 - (y // SQUARE_SIZE))
+                piece = board.piece_at(clicked_square)
+                if piece and piece.color == chess.WHITE:
+                    selected_square = clicked_square
+                    dragging_piece = (x, y, piece.symbol())
 
-        elif event.type == pygame.MOUSEBUTTONUP and dragging_piece:
-            target_square = chess.square(event.pos[0] // SQUARE_SIZE, (7 - event.pos[1] // SQUARE_SIZE))
-            move = [m for m in board.legal_moves if m.from_square == selected_square and m.to_square == target_square]
-            if move:
-                board.push(move[0])
-                last_move = move[0]
-                pygame.time.delay(300)
-                ai_move = get_losing_move()
-                board.push(ai_move)
-                last_move = ai_move
+            elif event.type == pygame.MOUSEMOTION and dragging_piece:
+                dragging_piece = (event.pos[0], event.pos[1], dragging_piece[2])
 
-            selected_square = None
-            valid_moves = []
-            dragging_piece = None
+            elif event.type == pygame.MOUSEBUTTONUP and dragging_piece:
+                target_square = chess.square(event.pos[0] // SQUARE_SIZE, 7 - (event.pos[1] // SQUARE_SIZE))
+                move = chess.Move(selected_square, target_square)
+
+                # Pawn Promotion
+                if board.piece_at(selected_square) and board.piece_at(selected_square).piece_type == chess.PAWN:
+                    if target_square in chess.SquareSet(chess.BB_RANK_8) or target_square in chess.SquareSet(chess.BB_RANK_1):
+                        move = chess.Move(selected_square, target_square, promotion=chess.QUEEN)
+
+                if move in board.legal_moves:
+                    board.push(move)
+                    check_game_over()
+
+                    if not game_over:
+                        pygame.time.delay(300)
+                        ai_move = get_losing_move()
+                        if ai_move:
+                            board.push(ai_move)
+                            check_game_over()
+
+                selected_square = None
+                dragging_piece = None
 
     # Draw everything
-    screen.fill((0, 0, 0))
-    draw_board()
-    draw_pieces()
-    pygame.display.flip()
+    if game_over:
+        quit_rect = display_game_over()
+    else:
+        screen.fill((0, 0, 0))
+        draw_board()
+        draw_pieces()
+        pygame.display.flip()
 
 pygame.quit()
 
