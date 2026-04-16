@@ -38,11 +38,5 @@ Standard chess engines evaluate a board and try to maximize their score. LoserCh
 * It actively rewards moves where you can capture its pieces on the next turn.
 * If it sees a move that allows you to checkmate it, it will immediately play it.
 
-## 📸 Adding Screenshots
-To make the screenshot work at the top of this README:
-1. Create a folder named `assets` in your repository.
-2. Save your screenshot inside it as `screenshot1.png`.
-3. Commit and push the folder to GitHub.
-
 ## 📝 License
 This project is open source and available under the MIT License.
