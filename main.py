@@ -9,7 +9,7 @@ import json
 pygame.init()
 WIDTH, HEIGHT = 800, 800
 screen = pygame.display.set_mode((WIDTH, HEIGHT))
-pygame.display.set_caption("LoserChess - You Always Win")
+pygame.display.set_caption("LoserChess")
 
 # Colors & Fonts
 COLORS = {'white': (240, 217, 181), 'black': (181, 136, 99)}
