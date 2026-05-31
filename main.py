@@ -2,6 +2,8 @@ import pygame
 import chess
 import asyncio
 import os
+import platform
+import json
 
 # Initialize pygame
 pygame.init()
@@ -46,14 +48,28 @@ selected_square  = None
 dragging_piece   = None   # (x, y, symbol_str)
 game_over        = False
 winner           = ""
+last_move        = None
+animating_piece  = None   # dict with 'from_sq', 'to_sq', 'symbol', 'start_time', 'duration'
 
-# Sound setup (optional)
+# Sound setup
+move_sound = None
+capture_sound = None
+check_sound = None
+mate_sound = None
+
 try:
     pygame.mixer.init()
-    move_sound    = pygame.mixer.Sound('sounds/move.wav')
-    capture_sound = pygame.mixer.Sound('sounds/capture.wav')
-except Exception:
-    move_sound = capture_sound = None
+    def load_sound(path):
+        if os.path.exists(path):
+            return pygame.mixer.Sound(path)
+        return None
+    move_sound    = load_sound('sounds/move.ogg')
+    capture_sound = load_sound('sounds/capture.ogg')
+    check_sound   = load_sound('sounds/check.ogg')
+    mate_sound    = load_sound('sounds/mate.ogg')
+except Exception as e:
+    print(f"Sound init error: {e}")
+
 
 
 # ---------------------------------------------
@@ -61,7 +77,7 @@ except Exception:
 # ---------------------------------------------
 
 def draw_board():
-    """Draw squares, selection highlight, and legal-move dots."""
+    """Draw squares, selection highlight, last-move highlight, and legal-move dots/rings."""
     possible_targets = (
         {move.to_square for move in board.legal_moves if move.from_square == selected_square}
         if selected_square is not None else set()
@@ -74,30 +90,81 @@ def draw_board():
             rect  = pygame.Rect(col * SQUARE_SIZE, row * SQUARE_SIZE, SQUARE_SIZE, SQUARE_SIZE)
             pygame.draw.rect(screen, color, rect)
 
-            # Green border on the selected piece's square
+            # Soft yellow highlights for last move squares
+            if last_move is not None and sq in (last_move.from_square, last_move.to_square):
+                highlight_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                highlight_surf.fill((246, 246, 130, 100)) # Lichess-style subtle yellow tint
+                screen.blit(highlight_surf, (col * SQUARE_SIZE, row * SQUARE_SIZE))
+
+            # Translucent green highlight on the selected piece's square
             if selected_square is not None:
                 sel_row, sel_col = divmod(selected_square, 8)
                 if row == 7 - sel_row and col == sel_col:
-                    pygame.draw.rect(screen, SELECTED_COLOR, rect, 6)
+                    sel_surf = pygame.Surface((SQUARE_SIZE, SQUARE_SIZE), pygame.SRCALPHA)
+                    sel_surf.fill((20, 220, 20, 80)) # subtle translucent green
+                    screen.blit(sel_surf, (col * SQUARE_SIZE, row * SQUARE_SIZE))
 
-            # Small dot on legal-move targets
+            # Small translucent dot or outer ring on legal-move targets
             if sq in possible_targets:
                 cx = col * SQUARE_SIZE + SQUARE_SIZE // 2
                 cy = row * SQUARE_SIZE + SQUARE_SIZE // 2
-                pygame.draw.circle(screen, MOVE_DOT_COLOR, (cx, cy), 10)
+                target_piece = board.piece_at(sq)
+                if target_piece:
+                    # Draw a nice outer circle outline if targeting an occupied square
+                    pygame.draw.circle(screen, (0, 0, 0), (cx, cy), SQUARE_SIZE // 2 - 4, 4)
+                else:
+                    # Draw a small dot if targeting an empty square
+                    pygame.draw.circle(screen, MOVE_DOT_COLOR, (cx, cy), 8)
 
 
-def draw_pieces():
-    """Draw all pieces; skip the piece being dragged (drawn separately)."""
+def draw_pieces(current_time):
+    """Draw all pieces; skip the piece being dragged or animated."""
+    global animating_piece
+    
+    anim_progress = 1.0
+    anim_symbol = None
+    anim_to_sq = None
+    
+    if animating_piece:
+        elapsed = current_time - animating_piece['start_time']
+        duration = animating_piece['duration']
+        if elapsed >= duration:
+            animating_piece = None
+        else:
+            anim_progress = elapsed / duration
+            anim_symbol = animating_piece['symbol']
+            anim_to_sq = animating_piece['to_sq']
+            
     for square, piece in board.piece_map().items():
         if dragging_piece and square == selected_square:
             continue
+        # Skip drawing the animating piece at its destination square during animation
+        if animating_piece and square == anim_to_sq and piece.symbol() == anim_symbol:
+            continue
+            
         row, col = divmod(square, 8)
         sym = piece.symbol()
         if sym in PIECE_IMAGES:
             x = col * SQUARE_SIZE + PIECE_OFFSET
             y = (7 - row) * SQUARE_SIZE + PIECE_OFFSET
             screen.blit(PIECE_IMAGES[sym], (x, y))
+            
+    # Draw sliding piece
+    if animating_piece:
+        from_row, from_col = divmod(animating_piece['from_sq'], 8)
+        to_row, to_col = divmod(animating_piece['to_sq'], 8)
+        
+        from_x = from_col * SQUARE_SIZE + PIECE_OFFSET
+        from_y = (7 - from_row) * SQUARE_SIZE + PIECE_OFFSET
+        to_x = to_col * SQUARE_SIZE + PIECE_OFFSET
+        to_y = (7 - to_row) * SQUARE_SIZE + PIECE_OFFSET
+        
+        curr_x = from_x + (to_x - from_x) * anim_progress
+        curr_y = from_y + (to_y - from_y) * anim_progress
+        
+        sym = animating_piece['symbol']
+        if sym in PIECE_IMAGES:
+            screen.blit(PIECE_IMAGES[sym], (int(curr_x), int(curr_y)))
 
     # Draw the piece under the cursor while dragging
     if dragging_piece:
@@ -287,13 +354,69 @@ def check_game_over():
         game_over = True
 
 
+def update_captured_js():
+    # Count pieces on the board
+    counts = {
+        'P': 0, 'N': 0, 'B': 0, 'R': 0, 'Q': 0, 'K': 0,
+        'p': 0, 'n': 0, 'b': 0, 'r': 0, 'q': 0, 'k': 0
+    }
+    for sq in chess.SQUARES:
+        piece = board.piece_at(sq)
+        if piece:
+            counts[piece.symbol()] += 1
+            
+    captured_white = {
+        'P': max(0, 8 - counts['P']),
+        'N': max(0, 2 - counts['N']),
+        'B': max(0, 2 - counts['B']),
+        'R': max(0, 2 - counts['R']),
+        'Q': max(0, 1 - counts['Q']),
+    }
+    captured_black = {
+        'p': max(0, 8 - counts['p']),
+        'n': max(0, 2 - counts['n']),
+        'b': max(0, 2 - counts['b']),
+        'r': max(0, 2 - counts['r']),
+        'q': max(0, 1 - counts['q']),
+    }
+    
+    if platform.system() == "Emscripten":
+        try:
+            platform.window.updateCaptured(json.dumps(captured_white), json.dumps(captured_black))
+        except Exception:
+            pass
+
+
+def play_move_sound(is_capture):
+    if board.is_checkmate():
+        if mate_sound:
+            mate_sound.play()
+    elif board.is_check():
+        if check_sound:
+            check_sound.play()
+    elif is_capture:
+        if capture_sound:
+            capture_sound.play()
+    else:
+        if move_sound:
+            move_sound.play()
+
+
 def reset_game():
-    global board, game_over, winner, selected_square, dragging_piece
+    global board, game_over, winner, selected_square, dragging_piece, last_move, animating_piece
     board           = chess.Board()
     game_over       = False
     winner          = ""
     selected_square = None
     dragging_piece  = None
+    last_move       = None
+    animating_piece = None
+    
+    if platform.system() == "Emscripten":
+        try:
+            platform.window.resetMoves()
+        except Exception:
+            pass
 
 
 # ---------------------------------------------
@@ -348,14 +471,30 @@ async def main():
     
                     if move in board.legal_moves:
                         is_capture = board.is_capture(move)   # check BEFORE push
+                        piece_symbol = board.piece_at(selected_square).symbol()
+                        
+                        # Set up sliding animation
+                        global animating_piece, last_move
+                        animating_piece = {
+                            'from_sq': selected_square,
+                            'to_sq': target_square,
+                            'symbol': piece_symbol,
+                            'start_time': pygame.time.get_ticks(),
+                            'duration': 150
+                        }
+                        last_move = move
+                        
+                        san = board.san(move)
                         board.push(move)
-    
-                        if move_sound or capture_sound:
+                        
+                        if platform.system() == "Emscripten":
                             try:
-                                (capture_sound if is_capture else move_sound).play()
+                                platform.window.addMove(san)
                             except Exception:
                                 pass
-    
+                                
+                        play_move_sound(is_capture)
+                        update_captured_js()
                         check_game_over()
     
                         if not game_over:
@@ -363,7 +502,27 @@ async def main():
                             await asyncio.sleep(AI_MOVE_DELAY_MS / 1000.0)
                             ai_move = await get_losing_move()
                             if ai_move:
+                                is_capture_ai = board.is_capture(ai_move)
+                                piece_symbol_ai = board.piece_at(ai_move.from_square).symbol()
+                                animating_piece = {
+                                    'from_sq': ai_move.from_square,
+                                    'to_sq': ai_move.to_square,
+                                    'symbol': piece_symbol_ai,
+                                    'start_time': pygame.time.get_ticks(),
+                                    'duration': 150
+                                }
+                                last_move = ai_move
+                                san_ai = board.san(ai_move)
                                 board.push(ai_move)
+                                
+                                if platform.system() == "Emscripten":
+                                    try:
+                                        platform.window.addMove(san_ai)
+                                    except Exception:
+                                        pass
+                                        
+                                play_move_sound(is_capture_ai)
+                                update_captured_js()
                                 check_game_over()
     
                     selected_square = None
@@ -371,11 +530,11 @@ async def main():
     
         # Render
         screen.fill((0, 0, 0))
-
+ 
         draw_board()
-        draw_pieces()
+        draw_pieces(pygame.time.get_ticks())
         draw_labels()
-
+ 
         if game_over:
             # FIX #4: render overlay once per frame, cache button rects
             mouse_pos = pygame.mouse.get_pos()

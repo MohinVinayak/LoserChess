@@ -53,9 +53,8 @@ async def custom_site():
     while embed.counter()<0:
         await asyncio.sleep(.1)
 
-    # Hide the loading container and make the canvas visible immediately
-    platform.window.transfer.style.display = "none"
-    platform.window.canvas.style.visibility = "visible"
+    # Hide the loading screen smoothly
+    platform.window.eval("document.getElementById('loading-screen').classList.add('fade-out')")
 
     main = appdir / "assets" / "main.py"
 
@@ -186,90 +185,50 @@ function show_infobox() {
             width: 100%;
             height: 100%;
             overflow: hidden;
-            background-color: #121214;
+            background-color: #161512;
             font-family: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             display: flex;
             align-items: center;
             justify-content: center;
         }
 
-        #status {
-            font-weight: 600;
-            color: #f8fafc;
-            font-size: 16px;
-            margin: 0;
-            text-align: center;
-        }
-
-        #progress {
-            height: 6px;
-            width: 100%;
-            border-radius: 3px;
-            overflow: hidden;
-            background-color: #2d3748;
-            border: none;
-            -webkit-appearance: none;
-            appearance: none;
-        }
-        #progress::-webkit-progress-bar {
-            background-color: #2d3748;
-        }
-        #progress::-webkit-progress-value {
-            background: linear-gradient(90deg, #4f46e5, #06b6d4);
-        }
-        #progress::-moz-progress-bar {
-            background: linear-gradient(90deg, #4f46e5, #06b6d4);
-        }
-
-        #transfer {
-            font-family: 'Outfit', sans-serif;
-            color: #ffffff;
-            position: absolute;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 100;
+        /* Minimalist Loader */
+        #loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-color: #161512;
             display: flex;
-            flex-direction: column;
             align-items: center;
             justify-content: center;
-            gap: 20px;
-            background: rgba(20, 20, 25, 0.9);
-            padding: 40px;
-            border-radius: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
-            backdrop-filter: blur(10px);
-            width: 320px;
+            z-index: 1000;
+            transition: opacity 0.4s ease-out, visibility 0.4s;
+            opacity: 1;
+            visibility: visible;
+        }
+        
+        #loading-screen.fade-out {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
         }
 
-        #infobox {
-            display: none !important;
-            position: fixed;
-            background: rgba(28, 28, 35, 0.95);
-            color: #ffffff;
-            font-family: 'Outfit', sans-serif;
-            font-weight: 500;
-            padding: 20px 40px;
-            border-radius: 16px;
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
-            z-index: 999999;
-            text-align: center;
-            font-size: 18px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            max-width: 90vw;
-            backdrop-filter: blur(10px);
-        }
-        #infobox:hover {
-            background: rgba(35, 35, 45, 0.98);
-            transform: scale(1.03);
-            border-color: rgba(255, 255, 255, 0.2);
-            box-shadow: 0 15px 50px rgba(0, 0, 0, 0.6);
+        .spinner {
+            width: 32px;
+            height: 32px;
+            border: 2px solid rgba(255, 255, 255, 0.05);
+            border-radius: 50%;
+            border-top-color: #bababa;
+            animation: spin 0.6s linear infinite;
         }
 
-        /* the canvas *must not* have any border or padding, or mouse coords will be wrong */
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        /* Maximized, perfectly square canvas (enforces 1:1) */
         canvas.emscripten {
             border: 0px none;
             background-color: transparent;
@@ -287,13 +246,35 @@ function show_infobox() {
             left: 0;
             right: 0;
             box-shadow: 0 16px 48px rgba(0, 0, 0, 0.7);
-            border-radius: 8px;
+            border-radius: 4px;
         }
 
-        .topright{
-           position:absolute;
-           top:0px;
-           right:0px;
+        /* Clean float button in corner */
+        .topright {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            z-index: 20;
+        }
+
+        .btn-restart {
+            background-color: #262421;
+            border: 1px solid rgba(255, 255, 255, 0.04);
+            color: #bababa;
+            padding: 8px 16px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: 600;
+            cursor: pointer;
+            font-family: inherit;
+            transition: background-color 0.15s ease, color 0.15s ease;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+        }
+
+        .btn-restart:hover {
+            background-color: #36332e;
+            color: #ffffff;
+            border-color: rgba(255, 255, 255, 0.1);
         }
 
         .bottomright {
@@ -320,6 +301,216 @@ function show_infobox() {
            right: 10px;
            border: 1px solid black;
         }
+
+        /* Side Panels Layout */
+        .left-panel {
+            position: absolute;
+            left: calc((100vw - 100vh) / 4 - 140px);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 280px;
+            height: 80vh;
+            max-height: 600px;
+            background-color: #1e1e24;
+            border-radius: 12px;
+            border: 1px solid #2d2d35;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 24px;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        .right-panel {
+            position: absolute;
+            right: calc((100vw - 100vh) / 4 - 140px);
+            top: 50%;
+            transform: translateY(-50%);
+            width: 280px;
+            height: 80vh;
+            max-height: 600px;
+            background-color: #1e1e24;
+            border-radius: 12px;
+            border: 1px solid #2d2d35;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            z-index: 10;
+            display: none;
+            flex-direction: column;
+            padding: 24px;
+            font-family: 'Outfit', sans-serif;
+        }
+
+        @media (min-width: 1360px) and (min-aspect-ratio: 1.5) {
+            .left-panel, .right-panel {
+                display: flex;
+            }
+            .topright {
+                display: none !important;
+            }
+        }
+
+        /* Typography & Components inside Panels */
+        .logo-area {
+            display: flex;
+            flex-direction: column;
+            border-bottom: 1px solid #2d2d35;
+            padding-bottom: 16px;
+            margin-bottom: 20px;
+        }
+
+        .logo-title {
+            font-size: 24px;
+            font-weight: 700;
+            color: #ffffff;
+            letter-spacing: -0.5px;
+        }
+
+        .logo-subtitle {
+            font-size: 12px;
+            color: #8a8a93;
+            margin-top: 4px;
+        }
+
+        .section-label {
+            font-size: 13px;
+            font-weight: 600;
+            color: #8a8a93;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            margin-bottom: 12px;
+            display: block;
+        }
+
+        /* Captured section */
+        .captured-section {
+            flex-grow: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+
+        .captured-row {
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        .captured-player {
+            font-size: 12px;
+            font-weight: 500;
+            color: #8a8a93;
+        }
+
+        .captured-pieces-list {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            min-height: 36px;
+            background-color: #16161a;
+            border-radius: 6px;
+            padding: 6px 10px;
+            border: 1px solid #26262b;
+        }
+
+        .captured-piece-white {
+            font-size: 20px;
+            color: #e1e1e1;
+            margin-right: 2px;
+            letter-spacing: -2px;
+        }
+
+        .captured-piece-black {
+            font-size: 20px;
+            color: #5c5c5c;
+            margin-right: 2px;
+            letter-spacing: -2px;
+        }
+
+        /* Action button */
+        .restart-action-btn {
+            background-color: #26262b;
+            border: 1px solid #3d3d45;
+            color: #ff9f43;
+            width: 100%;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.15s ease;
+            margin-top: auto;
+        }
+
+        .restart-action-btn:hover {
+            background-color: #ff9f43;
+            color: #1e1e24;
+            border-color: #ff9f43;
+        }
+
+        /* Move History Log Table */
+        .move-log-section {
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+
+        .move-log-table {
+            flex-grow: 1;
+            background-color: #16161a;
+            border-radius: 8px;
+            border: 1px solid #2d2d35;
+            overflow-y: auto;
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 6px;
+        }
+
+        /* Custom scrollbar for move log */
+        .move-log-table::-webkit-scrollbar {
+            width: 6px;
+        }
+        .move-log-table::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        .move-log-table::-webkit-scrollbar-thumb {
+            background: #2d2d35;
+            border-radius: 3px;
+        }
+        .move-log-table::-webkit-scrollbar-thumb:hover {
+            background: #3d3d45;
+        }
+
+        .move-row {
+            display: flex;
+            font-size: 14px;
+            padding: 4px 6px;
+            border-radius: 4px;
+        }
+
+        .move-row:nth-child(even) {
+            background-color: #1a1a20;
+        }
+
+        .move-num {
+            width: 35px;
+            color: #5c5c64;
+            font-weight: 500;
+        }
+
+        .move-white {
+            flex: 1;
+            color: #e1e1e1;
+            font-weight: 500;
+        }
+
+        .move-black {
+            flex: 1;
+            color: #a0a0a8;
+            font-weight: 500;
+        }
     </style>
 
     <script src="{{cookiecutter.cdn}}browserfs.min.js"></script>
@@ -328,20 +519,54 @@ function show_infobox() {
 
 <body>
 
-    <!-- Styled loading area -->
-    <div id="transfer" align=center>
-        <h1 style="margin: 0 0 -5px 0; font-size: 26px; font-weight: 700; background: linear-gradient(90deg, #ff7b00, #ffae00); -webkit-background-clip: text; -webkit-text-fill-color: transparent; letter-spacing: -0.5px;">LoserChess</h1>
-        <p style="margin: 0 0 5px 0; font-size: 13px; color: #94a3b8; font-weight: 400;">The game where you win by losing</p>
-        <div id="status">Downloading game...</div>
-        <progress value="0" max="100" id="progress"></progress>
+    <!-- Hidden elements for Pygbag JS compatibility -->
+    <div id="transfer" hidden>
+        <div id="status"></div>
+        <progress id="progress"></progress>
     </div>
 
+    <!-- The actual minimalist loading screen -->
+    <div id="loading-screen">
+        <div class="spinner"></div>
+    </div>
 
+    <div class="topright">
+        <button class="btn-restart" onclick="window.location.reload()">Restart</button>
+    </div>
+
+    <!-- Left panel -->
+    <div class="left-panel">
+        <div class="logo-area">
+            <span class="logo-title">LoserChess</span>
+            <span class="logo-subtitle">You win by losing.</span>
+        </div>
+        
+        <div class="captured-section">
+            <div class="captured-row">
+                <span class="captured-player">White captures:</span>
+                <div class="captured-pieces-list" id="white-captures-list"></div>
+            </div>
+            <div class="captured-row">
+                <span class="captured-player">Black captures:</span>
+                <div class="captured-pieces-list" id="black-captures-list"></div>
+            </div>
+        </div>
+        
+        <button class="restart-action-btn" onclick="window.location.reload()">Restart Game</button>
+    </div>
+
+    <!-- Right panel -->
+    <div class="right-panel">
+        <div class="move-log-section">
+            <span class="section-label">Move History</span>
+            <div class="move-log-table" id="move-log-table"></div>
+        </div>
+    </div>
 
     <canvas class="emscripten" id="canvas"
 width="1px"
 height="1px"
-    oncontextmenu="event.preventDefault()" tabindex=1>
+oncontextmenu="event.preventDefault()" tabindex=1>
     </canvas>
 
     <canvas class="emscripten" id="canvas3d"
@@ -414,6 +639,83 @@ frameborder="1"
     globalThis.__canvas_resized = (self, ecw, ech) => {
         console.warn("TODO: panda3d canvas monitor", self, ecw, ech)
     }
+
+    // PGN Move history bridge
+    let moveList = [];
+
+    window.resetMoves = function() {
+        moveList = [];
+        const table = document.getElementById('move-log-table');
+        if (table) table.innerHTML = '';
+        
+        // Reset captures
+        window.updateCaptured('{}', '{}');
+    };
+
+    window.addMove = function(san) {
+        moveList.push(san);
+        const table = document.getElementById('move-log-table');
+        if (!table) return;
+        
+        // Re-render move table
+        table.innerHTML = '';
+        for (let i = 0; i < moveList.length; i += 2) {
+            const moveNum = Math.floor(i / 2) + 1;
+            const whiteMove = moveList[i];
+            const blackMove = moveList[i + 1] || '';
+            
+            const row = document.createElement('div');
+            row.className = 'move-row';
+            row.innerHTML = `
+                <span class="move-num">${moveNum}.</span>
+                <span class="move-white">${whiteMove}</span>
+                <span class="move-black">${blackMove}</span>
+            `;
+            table.appendChild(row);
+        }
+        
+        // Auto scroll to bottom
+        table.scrollTop = table.scrollHeight;
+    };
+
+    // Captured pieces bridge
+    window.updateCaptured = function(whiteCapturedJson, blackCapturedJson) {
+        const whiteCaptured = JSON.parse(whiteCapturedJson);
+        const blackCaptured = JSON.parse(blackCapturedJson);
+        
+        const whiteList = document.getElementById('white-captures-list'); // Black pieces captured by White
+        const blackList = document.getElementById('black-captures-list'); // White pieces captured by Black
+        
+        if (whiteList) {
+            whiteList.innerHTML = '';
+            // Black pieces captured: p, n, b, r, q
+            const symbolMap = { 'p': '♟', 'n': '♞', 'b': '♝', 'r': '♜', 'q': '♛' };
+            for (const [key, val] of Object.entries(blackCaptured)) {
+                if (val > 0) {
+                    const sym = symbolMap[key] || '';
+                    const span = document.createElement('span');
+                    span.className = 'captured-piece-black';
+                    span.innerText = sym.repeat(val);
+                    whiteList.appendChild(span);
+                }
+            }
+        }
+        
+        if (blackList) {
+            blackList.innerHTML = '';
+            // White pieces captured: P, N, B, R, Q
+            const symbolMap = { 'P': '♟', 'N': '♞', 'B': '♝', 'R': '♜', 'Q': '♛' };
+            for (const [key, val] of Object.entries(whiteCaptured)) {
+                if (val > 0) {
+                    const sym = symbolMap[key] || '';
+                    const span = document.createElement('span');
+                    span.className = 'captured-piece-white';
+                    span.innerText = sym.repeat(val);
+                    blackList.appendChild(span);
+                }
+            }
+        }
+    };
 
     async function custom_onload(debug_hidden) {
         // this is called before anything python is loaded
